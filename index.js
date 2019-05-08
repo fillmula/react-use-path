@@ -21,21 +21,39 @@ const getCurrentState = () => {
   };
 };
 
+const dispatches = [];
+let count = 0;
+
 const routerUpdateHook = (dispatch) => [() => {
+  dispatches.push(dispatch);
   const updateRouter = () => {
-    dispatch({ type: 'setup' });
+    for (const dispatch of dispatches) {
+      dispatch({ type: 'setup' });
+    }
   };
-  window.addEventListener('popstate', updateRouter);
+  if (count === 0) {
+    window.addEventListener('popstate', updateRouter);
+  }
+  count += 1;
   return () => {
-    window.removeEventListener('popstate', updateRouter);
+    count -= 1;
+    dispatches.splice(
+      dispatches.indexOf(dispatches.find((d) => d === dispatch)),
+      1
+    );
+    if (count === 0) {
+      window.removeEventListener('popstate', updateRouter);
+    }
   };
 }, []];
 
-const setPathFunc = (state, dispatch, action) => (params) => {
+const setPathFunc = (state, action) => (params) => {
   if (params.fullpath || (typeof params === 'string')) {
     const fullpath = params.fullpath || params;
     const [path, query, hash] = parseFullpath(fullpath);
-    dispatch({ type: action, params: { path, query, hash, fullpath }});
+    for (const dispatch of dispatches) {
+      dispatch({ type: action, params: { path, query, hash, fullpath }});
+    }
   } else {
     params = Object.assign({}, params);
     // reset following url components
@@ -57,7 +75,9 @@ const setPathFunc = (state, dispatch, action) => (params) => {
       params.path = state.path;
     }
     const fullpath = buildFullpath(params.path, params.query, params.hash);
-    dispatch({ type: 'push', params: { ...params, fullpath }});
+    for (const dispatch of dispatches) {
+      dispatch({ type: action, params: { ...params, fullpath }});
+    }
   }
 };
 
@@ -82,7 +102,7 @@ const router = (state, action) => {
     case 'setup': {
       return Object.assign({}, state, getCurrentState());
     }
-    default: /* istanbul ignore next */
+    default:
       throw new Error(`Unknown action '${action.type}'.`);
   }
 };
@@ -90,8 +110,8 @@ const router = (state, action) => {
 const usePath = () => {
   const [state, dispatch] = useReducer(router, getCurrentState());
   useEffect(...routerUpdateHook(dispatch));
-  const setPath = setPathFunc(state, dispatch, 'push');
-  const replacePath = setPathFunc(state, dispatch, 'replace');
+  const setPath = setPathFunc(state, 'push');
+  const replacePath = setPathFunc(state, 'replace');
   return [state, setPath, replacePath];
 };
 
